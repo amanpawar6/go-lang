@@ -85,12 +85,11 @@ func SingleUserDetails(c *fiber.Ctx) error {
 
 // Create User
 func Createuser(c *fiber.Ctx) error {
-	body := new(models.User)
+	body := new(models.User) //Defines Body Model
 	if err := c.BodyParser(body); err != nil {
 		response.OnError(c, err.Error(), 400, err)
 		return nil
 	}
-	// log.Println(body)
 	rows, err := database.DB.Query("Select * from user where email=?", body.Email)
 	if err != nil {
 		response.OnError(c, err.Error(), 400, err)
@@ -231,5 +230,130 @@ func DeleteUser(c *fiber.Ctx) error {
 		return nil
 	}
 	response.OnSuccess(c, "User Deleted", 200, nil)
+	return nil
+}
+
+// Login
+func Userlogin(c *fiber.Ctx) error {
+	var bodypayload interface{}
+	buffer := c.Body()
+	json.Unmarshal(buffer, &bodypayload)
+	body := bodypayload.(map[string]interface{})
+	result, err := database.DB.Query("Select * from user where email=?", body["email"])
+	if err != nil {
+		response.OnError(c, err.Error(), 500, err)
+		return nil
+	}
+	defer result.Close()
+	User := new(models.User)
+	for result.Next() {
+		err := result.Scan(&User.ID, &User.First_Name, &User.Last_Name, &User.Email, &User.Password)
+		if err != nil {
+			response.OnError(c, err.Error(), 500, err)
+			return nil
+		}
+	}
+	if User.ID == 0 {
+		response.OnError(c, "Wrong Email", 401, nil)
+	} else {
+		password := body["password"].(string)
+		CheckPasswordHash := common.CheckPasswordHash(password, User.Password)
+		if CheckPasswordHash {
+			response.OnSuccess(c, "Login Successful", 200, nil)
+		} else {
+			response.OnError(c, "Wrong Password", 401, nil)
+		}
+	}
+	return nil
+}
+
+// Update Password
+func UpdatePassword(c *fiber.Ctx) error {
+	var bodypayload interface{}
+	buffer := c.Body()
+	json.Unmarshal(buffer, &bodypayload)
+	body := bodypayload.(map[string]interface{})
+	if body["email"] == nil || body["newpassword"] == nil || body["confirmpassword"] == nil || body["oldpassword"] == nil {
+		response.OnError(c, "Params Missing", 500, nil)
+	} else {
+		if body["newpassword"] != body["confirmpassword"] {
+			response.OnError(c, "new password and confirm password not matched", 401, nil)
+		} else {
+			result, err := database.DB.Query("Select * from user where email=?", body["email"])
+			if err != nil {
+				response.OnError(c, err.Error(), 500, err)
+				return nil
+			}
+			defer result.Close()
+			User := new(models.User)
+			for result.Next() {
+				err := result.Scan(&User.ID, &User.First_Name, &User.Last_Name, &User.Email, &User.Password)
+				if err != nil {
+					response.OnError(c, err.Error(), 500, err)
+					return nil
+				}
+			}
+			// fmt.Println(User)
+			oldpassword := body["oldpassword"].(string)
+			CheckPasswordHash := common.CheckPasswordHash(oldpassword, User.Password)
+			if CheckPasswordHash {
+				newpassword := body["newpassword"].(string)
+				hashedPassword, hasherr := common.HashPassword(newpassword)
+				if hasherr != nil {
+					response.OnError(c, hasherr.Error(), 400, hasherr)
+					return nil
+				}
+				_, passErr := database.DB.Query("update user set password=? where id=?", hashedPassword, User.ID)
+				if passErr != nil {
+					response.OnError(c, passErr.Error(), 500, passErr)
+					return nil
+				}
+				response.OnSuccess(c, "Password Updated", 200, nil)
+			} else {
+				response.OnError(c, "Old Password not matched", 401, nil)
+			}
+		}
+	}
+	return nil
+}
+
+// Forget Password
+func ForgetPassword(c *fiber.Ctx) error {
+	var bodypayload interface{}
+	buffer := c.Body()
+	json.Unmarshal(buffer, &bodypayload)
+	body := bodypayload.(map[string]interface{})
+	if body["email"] == nil {
+		response.OnError(c, "Params Missing", 500, nil)
+	} else {
+		result, err := database.DB.Query("Select * from user where email=?", body["email"])
+		if err != nil {
+			response.OnError(c, err.Error(), 500, err)
+			return nil
+		}
+		defer result.Close()
+		User := new(models.User)
+		for result.Next() {
+			err := result.Scan(&User.ID, &User.First_Name, &User.Last_Name, &User.Email, &User.Password)
+			if err != nil {
+				response.OnError(c, err.Error(), 500, err)
+				return nil
+			}
+		}
+		newpassword := common.RandomPasswordGenerator()
+		hashedPassword, hasherr := common.HashPassword(newpassword)
+		if hasherr != nil {
+			response.OnError(c, hasherr.Error(), 400, hasherr)
+			return nil
+		}
+		_, passErr := database.DB.Query("update user set password=? where id=?", hashedPassword, User.ID)
+		if passErr != nil {
+			response.OnError(c, passErr.Error(), 500, passErr)
+			return nil
+		}
+		common.Mailer(User.Email, User.First_Name, newpassword)
+		fmt.Println(newpassword)
+	}
+	response.OnSuccess(c, "Password sends your email", 200, nil)
 	return nil
 }

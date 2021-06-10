@@ -13,9 +13,9 @@ func handleRequests(app *fiber.App) {
 	app.Post("/createuser", controller.Createuser)
 	app.Put("/updateuser", controller.UpdateUser)
 	app.Delete("/deleteuser", controller.DeleteUser)
-	// app.Post("/login")
-	// app.Put("/updatepassword")
-	// app.Put("/forgotpassword")
+	app.Post("/login", controller.Userlogin)
+	app.Put("/updatepassword", controller.UpdatePassword)
+	app.Put("/forgotpassword", controller.ForgetPassword)
 }
 
 func Routes(app *fiber.App) {
