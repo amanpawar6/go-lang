@@ -4,12 +4,17 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"os"
+	"strings"
+	"sync"
 	"time"
 
 	"example.com/common"
+	"example.com/common/mailer"
 	database "example.com/connectivity"
 	"example.com/models"
 	"example.com/response"
+	"github.com/360EntSecGroup-Skylar/excelize/v2"
 	"github.com/gofiber/fiber/v2"
 )
 
@@ -351,9 +356,81 @@ func ForgetPassword(c *fiber.Ctx) error {
 			response.OnError(c, passErr.Error(), 500, passErr)
 			return nil
 		}
-		common.Mailer(User.Email, User.First_Name, newpassword)
+		mailer.Mailer(User.Email, User.First_Name, newpassword)
 		fmt.Println(newpassword)
 	}
 	response.OnSuccess(c, "Password sends your email", 200, nil)
 	return nil
+}
+
+func Bulkupload(c *fiber.Ctx) error {
+
+	// This function returns the file path of the saved file or an error if it occurs
+	file, err := common.FileUpload(c)
+	if err != nil {
+		response.OnError(c, err.Error(), 401, err)
+		return nil
+	}
+	filepath := fmt.Sprintf("./upload/%s", file)
+
+	f, err := excelize.OpenFile(filepath)
+	if err != nil {
+		response.OnError(c, "file not found", 401, err)
+		return nil
+	}
+	sheetname := f.GetSheetMap()
+	// fmt.Println(sheetname)
+	rows, err := f.GetRows(sheetname[1])
+	if err != nil {
+		response.OnError(c, "file not found", 401, err)
+		return nil
+	}
+
+	var wg sync.WaitGroup
+
+	data1 := rows[:len(rows)/2]
+	data2 := rows[(len(rows)/2)+1:]
+
+	wg.Add(2)
+	go Save(data1, &wg, 1)
+	go Save(data2, &wg, 2)
+
+	wg.Wait()
+
+	fileremoveErr := os.Remove(filepath)
+	if fileremoveErr != nil {
+		response.OnError(c, fileremoveErr.Error(), 401, fileremoveErr)
+		return nil
+	}
+	return nil
+}
+
+func Save(rows [][]string, wg *sync.WaitGroup, v int) {
+
+	// fmt.Println(v)
+
+	defer wg.Done()
+
+	sqlStr := "INSERT INTO test(n1, n2, n3) VALUES "
+	vals := []interface{}{}
+
+	for _, row := range rows {
+		sqlStr += "(?, ?, ?),"
+		vals = append(vals, row[0], row[1], row[2])
+	}
+
+	//trim the last ,
+	sqlStr = strings.TrimSuffix(sqlStr, ",")
+
+	//Replacing ? with $n for postgres
+	// sqlStr = ReplaceSQL(sqlStr, "?")
+
+	//prepare the statement
+	stmt, _ := database.DB.Prepare(sqlStr)
+
+	//format all vals at once
+	_, err := stmt.Exec(vals...)
+	if err != nil {
+		return
+	}
 }

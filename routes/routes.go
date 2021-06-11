@@ -16,6 +16,7 @@ func handleRequests(app *fiber.App) {
 	app.Post("/login", controller.Userlogin)
 	app.Put("/updatepassword", controller.UpdatePassword)
 	app.Put("/forgotpassword", controller.ForgetPassword)
+	app.Post("/bulkupload", controller.Bulkupload)
 }
 
 func Routes(app *fiber.App) {

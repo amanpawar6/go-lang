@@ -1,13 +1,14 @@
 package common
 
 import (
-	"crypto/tls"
+	"fmt"
 	"math/rand"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/gofiber/fiber/v2"
 	"golang.org/x/crypto/bcrypt"
-	gomail "gopkg.in/mail.v2"
 )
 
 func HashPassword(password string) (string, error) {
@@ -41,30 +42,45 @@ func RandomPasswordGenerator() string {
 	return str
 }
 
-func Mailer(receiver string, name string, pass string) {
-	host := "smtp.gmail.com"
-	port := 587
-	user := "example@gmail.com" // Sender Email ID
-	password := "12345"         // Password
-	mail := gomail.NewMessage()
-	mail.SetHeader("From", "noreplymailed2020@gmail.com")
-	mail.SetHeader("To", receiver)
-	// mail.SetAddressHeader("Cc", "dan@example.com", "Dan")
-	mail.SetHeader("Subject", "Hello!")
-	m := "Hi <b>name</b>, <br> <p>Here is the new password- <b>Password</b></p><br><p>If password reset wasn’t intended: If you didn't make the request, just ignore this email.</p><br><br>Thanks"
-	message := strings.ReplaceAll(m, "name", name)
-	message1 := strings.ReplaceAll(message, "Password", pass)
-	mail.SetBody("text/html", message1)
-	// mail.Attach("/home/Alex/lolcat.jpg")
+// This function returns the file path of the saved file
+// or an error if it occurs
+func FileUpload(c *fiber.Ctx) (string, error) {
 
-	d := gomail.NewDialer(host, port, user, password)
-
-	// This is only needed when SSL/TLS certificate is not valid on server.
-	// In production this should be set to false.
-	d.TLSConfig = &tls.Config{InsecureSkipVerify: true}
-
-	// Send the email to Bob, Cora and Dan.
-	if err := d.DialAndSend(mail); err != nil {
-		panic(err)
+	form, err := c.MultipartForm() // Retrieve the file from form data
+	if err != nil {
+		return "", err
 	}
+
+	// fmt.Println(form)
+
+	// Get all files from "documents" key:
+	files := form.File["file"]
+
+	// fmt.Println(files)
+
+	var filepath string
+	var filename string
+
+	// Loop through files:
+	for _, file := range files {
+		filepath = fmt.Sprintf("./upload/%s", file.Filename)
+		filename = file.Filename
+		// fmt.Println(file.Filename, file.Size, file.Header["Content-Type"][0])
+		// => "tutorial.pdf" 360641 "application/pdf"
+
+		// Save the files to disk:
+		if err := c.SaveFile(file, filepath); err != nil {
+			return err.Error(), err
+		}
+	}
+
+	return filename, nil
+}
+
+func ReplaceSQL(old, searchPattern string) string {
+	tmpCount := strings.Count(old, searchPattern)
+	for m := 1; m <= tmpCount; m++ {
+		old = strings.Replace(old, searchPattern, "$"+strconv.Itoa(m), 1)
+	}
+	return old
 }
